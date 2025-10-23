@@ -2,6 +2,7 @@
 import express from "express";
 import cors from "cors";
 import shippo from "shippo";
+import { google } from "googleapis";
 
 const app = express();
 app.use(cors());
@@ -11,6 +12,13 @@ app.use(express.json());
 const SHIPPO_TOKEN = process.env.SHIPPO_TOKEN;
 if (SHIPPO_TOKEN) {
   shippo.config.accessToken = SHIPPO_TOKEN;
+}
+
+// Initialize Google Shopping API
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
+let shopping = null;
+if (GOOGLE_API_KEY) {
+  shopping = google.shopping({ version: 'v1', auth: GOOGLE_API_KEY });
 }
 
 // Simple API-key gate so only your GPT can call this
@@ -25,20 +33,93 @@ app.use((req, res, next) => {
 
 app.get("/health", (req, res) => res.json({ ok: true }));
 
-// 1) Market value — mock now
+// 1) Market value — Google Shopping API + fallback
 app.get("/market/value", async (req, res) => {
   const { part, oem, make, model, year } = req.query;
-  // TODO: later call eBay Browse API here
-  res.json({
-    avg: 145.0,
-    p50: 139.99,
-    p90: 199.99,
-    comps: [
-      { title: `${year || ""} ${make || ""} ${model || ""} ${part} OEM ${oem || ""}`.trim(),
-        price: 149.99, url: "https://example.com/comp1", condition: "used" },
-      { title: `${part} good condition`, price: 199.99, url: "https://example.com/comp2", condition: "used" },
-    ],
-  });
+  
+  // Build search query
+  const searchQuery = `${year || ""} ${make || ""} ${model || ""} ${part} ${oem || ""}`.trim();
+  
+  // If no Google API key, return mock data
+  if (!GOOGLE_API_KEY || !shopping) {
+    return res.json({
+      avg: 145.0,
+      p50: 139.99,
+      p90: 199.99,
+      source: "mock",
+      comps: [
+        { title: `${year || ""} ${make || ""} ${model || ""} ${part} OEM ${oem || ""}`.trim(),
+          price: 149.99, url: "https://example.com/comp1", condition: "used", platform: "mock" },
+        { title: `${part} good condition`, price: 199.99, url: "https://example.com/comp2", condition: "used", platform: "mock" },
+      ],
+    });
+  }
+
+  try {
+    // Use Google Shopping API to search for products
+    const response = await shopping.products.list({
+      q: searchQuery,
+      maxResults: 10,
+      country: 'US'
+    });
+
+    const products = response.data.items || [];
+    
+    if (products.length === 0) {
+      // Fallback to mock data if no results
+      return res.json({
+        avg: 145.0,
+        p50: 139.99,
+        p90: 199.99,
+        source: "google_shopping_no_results",
+        comps: [
+          { title: `${year || ""} ${make || ""} ${model || ""} ${part} OEM ${oem || ""}`.trim(),
+            price: 149.99, url: "https://example.com/comp1", condition: "used", platform: "fallback" },
+        ],
+      });
+    }
+
+    // Process Google Shopping results
+    const prices = products
+      .filter(p => p.price && p.price.value)
+      .map(p => parseFloat(p.price.value));
+    
+    const comps = products.slice(0, 5).map(product => ({
+      title: product.title || "Unknown Product",
+      price: product.price ? parseFloat(product.price.value) : 0,
+      url: product.link || "#",
+      condition: "used", // Google Shopping doesn't provide condition
+      platform: product.source || "google_shopping"
+    }));
+
+    // Calculate statistics
+    const avg = prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0;
+    const sortedPrices = prices.sort((a, b) => a - b);
+    const p50 = sortedPrices[Math.floor(sortedPrices.length * 0.5)] || 0;
+    const p90 = sortedPrices[Math.floor(sortedPrices.length * 0.9)] || 0;
+
+    res.json({
+      avg: Math.round(avg * 100) / 100,
+      p50: Math.round(p50 * 100) / 100,
+      p90: Math.round(p90 * 100) / 100,
+      source: "google_shopping",
+      comps: comps.filter(c => c.price > 0)
+    });
+
+  } catch (error) {
+    console.error('Google Shopping API error:', error);
+    // Fallback to mock data on error
+    res.json({
+      avg: 145.0,
+      p50: 139.99,
+      p90: 199.99,
+      source: "google_shopping_error",
+      comps: [
+        { title: `${year || ""} ${make || ""} ${model || ""} ${part} OEM ${oem || ""}`.trim(),
+          price: 149.99, url: "https://example.com/comp1", condition: "used", platform: "fallback" },
+      ],
+    });
+  }
 });
 
 // 2) Shipping quote — real Shippo API
