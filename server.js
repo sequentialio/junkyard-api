@@ -16,12 +16,13 @@ if (SHIPPO_TOKEN) {
   shippoClient = new shippo.Shippo(SHIPPO_TOKEN);
 }
 
-// Initialize Google Shopping API
+// Initialize Google Shopping API (disabled for now - Google Shopping API is separate)
 const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 let shopping = null;
-if (GOOGLE_API_KEY) {
-  shopping = google.shopping({ version: 'v1', auth: GOOGLE_API_KEY });
-}
+// Note: Google Shopping API is not part of the standard googleapis library
+// if (GOOGLE_API_KEY) {
+//   shopping = google.shopping({ version: 'v1', auth: GOOGLE_API_KEY });
+// }
 
 // Simple API-key gate so only your GPT can call this
 const SERVICE_API_KEY = process.env.SERVICE_API_KEY;
