@@ -11,8 +11,9 @@ app.use(express.json());
 
 // Initialize Shippo with API key from environment
 const SHIPPO_TOKEN = process.env.SHIPPO_TOKEN;
+let shippoClient = null;
 if (SHIPPO_TOKEN) {
-  shippo.setAccessToken(SHIPPO_TOKEN);
+  shippoClient = new shippo.Shippo(SHIPPO_TOKEN);
 }
 
 // Initialize Google Shopping API
@@ -127,8 +128,8 @@ app.get("/market/value", async (req, res) => {
 app.get("/shipping/quote", async (req, res) => {
   const { from_zip, to_zip, weight_lb, dims_in } = req.query;
   
-  // If no Shippo token, return mock data
-  if (!SHIPPO_TOKEN) {
+  // If no Shippo client, return mock data
+  if (!shippoClient) {
     return res.json([
       { service: "USPS Priority (mock)", est_cost: 13.50, eta_days: 2 },
       { service: "UPS Ground (mock)", est_cost: 11.75, eta_days: 3 },
@@ -166,7 +167,7 @@ app.get("/shipping/quote", async (req, res) => {
     };
 
     // Get rates from Shippo
-    const rates = await shippo.shipment.create(shipment);
+    const rates = await shippoClient.shipment.create(shipment);
     
     // Format response to match our API
     const formattedRates = rates.rates.slice(0, 3).map(rate => ({
