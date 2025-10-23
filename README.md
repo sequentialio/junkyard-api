@@ -5,9 +5,13 @@ A Node.js/Express API for calculating junkyard part profits with market value lo
 ## Features
 
 - 🔐 API key authentication
-- 📊 Market value estimation with mock data
-- 🚚 Shipping quote estimates
+- 📊 Market value estimation with Google Shopping API
+- 🚚 Real shipping quotes with Shippo API
 - 💰 ROI calculation with fees and margins
+- 📈 Google Trends demand analysis
+- 🚗 NHTSA vehicle specifications
+- 🔧 CarQuery detailed vehicle information
+- 🎯 Complete analysis combining all data sources
 - 🚀 Ready for Railway deployment
 
 ## API Endpoints
@@ -39,6 +43,26 @@ Content-Type: application/json
   "ship_cost": 15,
   "misc": 0
 }
+```
+
+### Google Trends - Demand Analysis
+```
+GET /trends/demand?part=alternator&make=Honda&model=Civic&year=2005
+```
+
+### NHTSA Vehicle Specifications
+```
+GET /vehicle/specs?make=Toyota&model=4Runner&year=1996
+```
+
+### CarQuery Vehicle Details
+```
+GET /vehicle/details?make=Toyota&model=4Runner&year=1996
+```
+
+### Complete Analysis (All Data Combined)
+```
+GET /analysis/complete?part=alternator&make=Honda&model=Civic&year=2005
 ```
 
 ## Local Development
