@@ -12,7 +12,7 @@ app.use(express.json());
 // Initialize Shippo with API key from environment
 const SHIPPO_TOKEN = process.env.SHIPPO_TOKEN;
 if (SHIPPO_TOKEN) {
-  shippo.config.accessToken = SHIPPO_TOKEN;
+  shippo.setAccessToken(SHIPPO_TOKEN);
 }
 
 // Initialize Google Shopping API
