@@ -1,10 +1,17 @@
 // server.js
 import express from "express";
 import cors from "cors";
+import shippo from "shippo";
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Initialize Shippo with API key from environment
+const SHIPPO_TOKEN = process.env.SHIPPO_TOKEN;
+if (SHIPPO_TOKEN) {
+  shippo.config.accessToken = SHIPPO_TOKEN;
+}
 
 // Simple API-key gate so only your GPT can call this
 const SERVICE_API_KEY = process.env.SERVICE_API_KEY;
@@ -34,13 +41,68 @@ app.get("/market/value", async (req, res) => {
   });
 });
 
-// 2) Shipping quote — mock now
-app.get("/shipping/quote", (req, res) => {
+// 2) Shipping quote — real Shippo API
+app.get("/shipping/quote", async (req, res) => {
   const { from_zip, to_zip, weight_lb, dims_in } = req.query;
-  res.json([
-    { service: "USPS Priority (estimated)", est_cost: 13.50, eta_days: 2 },
-    { service: "UPS Ground (estimated)", est_cost: 11.75, eta_days: 3 },
-  ]);
+  
+  // If no Shippo token, return mock data
+  if (!SHIPPO_TOKEN) {
+    return res.json([
+      { service: "USPS Priority (mock)", est_cost: 13.50, eta_days: 2 },
+      { service: "UPS Ground (mock)", est_cost: 11.75, eta_days: 3 },
+    ]);
+  }
+
+  try {
+    // Parse dimensions (format: "LxWxH")
+    let length = 10, width = 8, height = 6; // defaults
+    if (dims_in) {
+      const [l, w, h] = dims_in.split('x').map(Number);
+      if (l && w && h) {
+        length = l; width = w; height = h;
+      }
+    }
+
+    // Create shipment request for Shippo
+    const shipment = {
+      address_from: {
+        zip: from_zip,
+        country: "US"
+      },
+      address_to: {
+        zip: to_zip,
+        country: "US"
+      },
+      parcels: [{
+        length: length.toString(),
+        width: width.toString(),
+        height: height.toString(),
+        distance_unit: "in",
+        weight: weight_lb.toString(),
+        mass_unit: "lb"
+      }]
+    };
+
+    // Get rates from Shippo
+    const rates = await shippo.shipment.create(shipment);
+    
+    // Format response to match our API
+    const formattedRates = rates.rates.slice(0, 3).map(rate => ({
+      service: `${rate.provider} ${rate.servicelevel.name}`,
+      est_cost: parseFloat(rate.amount),
+      eta_days: rate.estimated_days || 3
+    }));
+
+    res.json(formattedRates);
+
+  } catch (error) {
+    console.error('Shippo API error:', error);
+    // Fallback to mock data on error
+    res.json([
+      { service: "USPS Priority (fallback)", est_cost: 13.50, eta_days: 2 },
+      { service: "UPS Ground (fallback)", est_cost: 11.75, eta_days: 3 },
+    ]);
+  }
 });
 
 // 3) ROI calculator
